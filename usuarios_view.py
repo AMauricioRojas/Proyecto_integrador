@@ -1,7 +1,8 @@
 # usuarios_view.py
 import customtkinter as ctk
 from tkinter import ttk, messagebox
-from db import conectar
+# --- IMPORTAMOS EL CONTROLADOR ---
+from usuario_controller import UsuarioController
 
 class UsuariosVentana(ctk.CTkToplevel):
     def __init__(self, parent):
@@ -10,13 +11,11 @@ class UsuariosVentana(ctk.CTkToplevel):
         self.geometry("900x500")
         self.resizable(False, False)
         
-        # Modal
         self.transient(parent)
         self.grab_set()
 
-        # Conectar a la base de datos
-        self.conexion = conectar()
-        self.cursor = self.conexion.cursor()
+        # --- CREAMOS LA INSTANCIA DEL CONTROLADOR ---
+        self.controller = UsuarioController()
 
         # Título
         ctk.CTkLabel(self, text="🧑‍💻 Gestión de Usuarios", font=("Arial", 22, "bold")).pack(pady=20)
@@ -43,19 +42,18 @@ class UsuariosVentana(ctk.CTkToplevel):
         self.mostrar_usuarios()
 
     def mostrar_usuarios(self):
-        """Carga los usuarios desde la base de datos"""
+        """Pide los usuarios al controlador y los muestra."""
         for row in self.tabla.get_children():
             self.tabla.delete(row)
-
-        try:
-            self.cursor.execute("SELECT id_usuario, nombre, usuario, rol FROM usuarios")
-            for user in self.cursor.fetchall():
-                self.tabla.insert("", "end", values=user)
-        except Exception as e:
-            messagebox.showerror("Error", f"No se pudieron cargar los usuarios:\n{e}", parent=self)
+        
+        # La lógica de BD ahora está en el controlador
+        usuarios = self.controller.get_all_usuarios()
+        for user in usuarios:
+            self.tabla.insert("", "end", values=user)
 
     def abrir_formulario_agregar(self):
-        FormularioUsuario(self, modo="agregar", conexion=self.conexion, callback=self.mostrar_usuarios)
+        # Le pasamos el controlador al formulario
+        FormularioUsuario(self, "agregar", self.controller, self.mostrar_usuarios)
 
     def abrir_formulario_editar(self):
         seleccionado = self.tabla.selection()
@@ -63,7 +61,8 @@ class UsuariosVentana(ctk.CTkToplevel):
             messagebox.showwarning("Atención", "Selecciona un usuario para editar.", parent=self)
             return
         datos = self.tabla.item(seleccionado)["values"]
-        FormularioUsuario(self, modo="editar", conexion=self.conexion, datos=datos, callback=self.mostrar_usuarios)
+        # Le pasamos el controlador y los datos
+        FormularioUsuario(self, "editar", self.controller, self.mostrar_usuarios, datos)
 
     def eliminar_usuario(self):
         seleccionado = self.tabla.selection()
@@ -75,33 +74,22 @@ class UsuariosVentana(ctk.CTkToplevel):
         id_usuario = datos[0]
         nombre_usuario = datos[1]
         
-        # Evitar que se elimine el admin principal (ID 1)
-        if id_usuario == 1:
-            messagebox.showerror("Error", "No se puede eliminar al administrador principal.", parent=self)
-            return
-
-        if messagebox.askyesno("Eliminar", f"¿Seguro que deseas eliminar a '{nombre_usuario}'?", parent=self):
-            try:
-                self.cursor.execute("DELETE FROM usuarios WHERE id_usuario = %s", (id_usuario,))
-                self.conexion.commit()
-                self.mostrar_usuarios()
-                messagebox.showinfo("Eliminado", "Usuario eliminado correctamente.", parent=self)
-            except Exception as e:
-                messagebox.showerror("Error", f"No se pudo eliminar el usuario:\n{e}", parent=self)
+        # La lógica de BD y validación ahora está en el controlador
+        if self.controller.delete_usuario(id_usuario, nombre_usuario):
+            self.mostrar_usuarios() # Si se borró, actualizamos
 
 
 class FormularioUsuario(ctk.CTkToplevel):
-    def __init__(self, parent, modo, conexion, callback, datos=None):
+    # Ahora el formulario recibe el controlador
+    def __init__(self, parent, modo, controller, callback, datos=None):
         super().__init__(parent)
         self.title("Formulario de Usuario")
         self.geometry("400x450")
         
         self.modo = modo
-        self.conexion = conexion
+        self.controller = controller # Guardamos el controlador
         self.callback = callback
-        self.cursor = self.conexion.cursor()
         
-        # Modal
         self.transient(parent)
         self.grab_set()
 
@@ -140,40 +128,20 @@ class FormularioUsuario(ctk.CTkToplevel):
         ctk.CTkButton(self, text=texto_boton, command=self.guardar, height=40).pack(pady=20)
 
     def guardar(self):
+        # 1. Recolectamos datos de la VISTA
         nombre = self.nombre.get().strip()
         usuario = self.usuario.get().strip()
         contrasena = self.contrasena.get().strip()
         rol = self.rol.get()
 
-        if not nombre or not usuario:
-            messagebox.showwarning("Campos vacíos", "El Nombre y el Usuario son obligatorios.", parent=self)
-            return
+        # 2. Enviamos los datos al CONTROLADOR
+        exito = False
+        if self.modo == "agregar":
+            exito = self.controller.add_usuario(nombre, usuario, contrasena, rol)
+        else:
+            exito = self.controller.update_usuario(self.id_usuario, nombre, usuario, contrasena, rol)
 
-        try:
-            if self.modo == "agregar":
-                if not contrasena:
-                    messagebox.showwarning("Campos vacíos", "La Contraseña es obligatoria para usuarios nuevos.", parent=self)
-                    return
-                self.cursor.execute(
-                    "INSERT INTO usuarios (nombre, usuario, contrasena, rol) VALUES (%s, %s, %s, %s)",
-                    (nombre, usuario, contrasena, rol)
-                )
-            else: # Modo "editar"
-                if contrasena: # Si el usuario escribió una nueva contraseña
-                    self.cursor.execute(
-                        "UPDATE usuarios SET nombre=%s, usuario=%s, contrasena=%s, rol=%s WHERE id_usuario=%s",
-                        (nombre, usuario, contrasena, rol, self.id_usuario)
-                    )
-                else: # Si dejó la contraseña en blanco, no la actualizamos
-                    self.cursor.execute(
-                        "UPDATE usuarios SET nombre=%s, usuario=%s, rol=%s WHERE id_usuario=%s",
-                        (nombre, usuario, rol, self.id_usuario)
-                    )
-
-            self.conexion.commit()
-            messagebox.showinfo("Éxito", "Usuario guardado correctamente.", parent=self)
-            self.callback() # Actualiza la tabla en la ventana anterior
+        # 3. Si el controlador dice que fue un éxito, cerramos
+        if exito:
+            self.callback() # Llama a mostrar_usuarios() en la ventana anterior
             self.destroy()
-
-        except Exception as e:
-            messagebox.showerror("Error", f"No se pudo guardar el usuario:\n{e}", parent=self)

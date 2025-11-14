@@ -1,54 +1,40 @@
 # ventas_view.py
 import customtkinter as ctk
 from tkinter import ttk, messagebox
-from db import conectar
-from datetime import datetime
-from ticket_final_view import TicketFinalVentana
+# --- IMPORTAMOS EL CONTROLADOR Y EL TICKET SIMPLE ---
+from venta_controller import VentaController
+from ticket_simple_view import TicketSimpleVentana
 
 
 class VentasVentana(ctk.CTkToplevel):
-    def __init__(self, parent, id_usuario): # Aceptamos el id_usuario
+    def __init__(self, parent, id_usuario): 
         super().__init__(parent)
-        self.id_usuario = id_usuario # Lo guardamos
+        self.id_usuario = id_usuario 
         self.title("Ventas - Fogón EMD")
         self.geometry("1200x700")
-        self.state("zoomed")  # Pantalla completa
+        self.state("zoomed")  
 
-        self.conexion = conectar()
-        self.cursor = self.conexion.cursor()
+        # --- CREAMOS LA INSTANCIA DEL CONTROLADOR ---
+        self.controller = VentaController()
 
-        # Variables principales
+        # Variables de ESTADO DE LA VISTA
         self.total = 0.0
-        self.items_ticket = []  # [(id_producto, nombre, cantidad, subtotal)]
+        # (id_producto, nombre, cantidad, subtotal)
+        self.items_ticket = []  
         self.metodo_pago = ctk.StringVar(value="Efectivo")
 
-        # Título
+        # --- Título y Layout (Sin cambios de lógica) ---
         ctk.CTkLabel(self, text="🛒 Ventas", font=("Arial", 28, "bold")).pack(pady=10)
-
-        # ==========================================================
-        # === CORRECCIÓN DE LAYOUT ===
-        # ==========================================================
         
-        # Marco principal que contendrá ambos paneles
         frame_principal = ctk.CTkFrame(self)
         frame_principal.pack(fill="both", expand=True, padx=10, pady=10)
 
-        # --- Panel Derecho (Ticket y Acciones) ---
-        # Lo creamos y empaquetamos PRIMERO, con side="right"
-        # Su padre ahora es 'frame_principal'
         frame_derecho = ctk.CTkFrame(frame_principal, width=400)
         frame_derecho.pack(side="right", fill="y", padx=10, pady=10)
 
-        # --- Panel Izquierdo (Productos) ---
-        # Ocupará el resto del espacio
         frame_izquierdo = ctk.CTkFrame(frame_principal)
         frame_izquierdo.pack(side="left", fill="both", expand=True, padx=10, pady=10)
         
-        # ==========================================================
-        # === FIN DE CORRECCIÓN DE LAYOUT ===
-        # ==========================================================
-        
-        # --- Contenido del Panel Izquierdo ---
         ctk.CTkLabel(frame_izquierdo, text="Productos Disponibles", font=("Arial", 20, "bold")).pack(pady=5)
         self.tabla_productos = ttk.Treeview(
             frame_izquierdo, columns=("ID", "Nombre", "Precio", "Stock"), show="headings", height=18
@@ -58,17 +44,13 @@ class VentasVentana(ctk.CTkToplevel):
             self.tabla_productos.heading(col, text=col)
             self.tabla_productos.column(col, width=ancho, anchor="center")
 
-        # Scrollbar para productos
         scrollbar_productos = ttk.Scrollbar(frame_izquierdo, orient="vertical", command=self.tabla_productos.yview)
         scrollbar_productos.pack(side="right", fill="y")
         self.tabla_productos.configure(yscrollcommand=scrollbar_productos.set)
 
-        self.cargar_productos()
-
-        # --- Contenido del Panel Derecho ---
+        # --- Contenido del Panel Derecho (Sin cambios de lógica) ---
         ctk.CTkLabel(frame_derecho, text="Ticket Actual", font=("Arial", 20, "bold")).pack(pady=10)
 
-        # Ticket (productos seleccionados)
         self.ticket = ttk.Treeview(
             frame_derecho, columns=("Producto", "Cant.", "Subtotal"), show="headings", height=10
         )
@@ -85,137 +67,136 @@ class VentasVentana(ctk.CTkToplevel):
         ctk.CTkButton(frame_derecho, text="➕ Agregar al Ticket", command=self.agregar_ticket).pack(fill="x", padx=20, pady=5)
         ctk.CTkButton(frame_derecho, text="➖ Eliminar del Ticket", command=self.eliminar_ticket, fg_color="#D9534F").pack(fill="x", padx=20, pady=5)
 
-        # Método de pago
         ctk.CTkLabel(frame_derecho, text="Método de Pago:", font=("Arial", 16)).pack(pady=(15, 0))
         metodos = ["Efectivo", "Tarjeta", "Transferencia"]
         ctk.CTkComboBox(frame_derecho, variable=self.metodo_pago, values=metodos).pack(pady=5)
 
-        # Total
         self.total_label = ctk.CTkLabel(frame_derecho, text="Total: $0.00", font=("Arial", 26, "bold"), text_color="#2ECC71")
         self.total_label.pack(pady=20)
 
-        # --- ¡AQUÍ ESTÁ EL BOTÓN! ---
-        # Ahora debería ser visible dentro del frame_derecho
         ctk.CTkButton(frame_derecho, text="✅ Finalizar Venta", height=50, font=("Arial", 20, "bold"), command=self.finalizar_venta).pack(fill="x", padx=20, pady=20)
 
+        # --- Carga inicial ---
+        self.cargar_productos()
+
+    # ==========================================================
+    # === FUNCIONES DE LA VISTA ===
+    # ==========================================================
 
     def cargar_productos(self):
-        """Carga los productos desde la base de datos"""
+        """Pide los productos al controlador y los muestra."""
         for row in self.tabla_productos.get_children():
             self.tabla_productos.delete(row)
-        try:
-            self.cursor.execute("SELECT id_producto, nombre, precio, stock FROM productos WHERE stock > 0")
-            for prod in self.cursor.fetchall():
-                self.tabla_productos.insert("", "end", values=prod)
-        except Exception as e:
-            messagebox.showerror("Error", f"No se pudieron cargar los productos: {e}")
+        
+        # 1. Le pide los productos al controlador
+        productos = self.controller.get_productos_para_venta()
+        
+        # 2. Los muestra (usamos los nombres de columna del dictionary=True)
+        if productos:
+            for prod in productos:
+                self.tabla_productos.insert("", "end", values=(
+                    prod['id_producto'], 
+                    prod['nombre'], 
+                    prod['precio'], 
+                    prod['stock']
+                ))
+
+    # --- Las siguientes funciones (agregar, eliminar, etc.)
+    # --- gestionan el ESTADO DE LA VISTA (el carrito)
+    # --- por lo que está bien que se queden aquí.
 
     def actualizar_total(self):
-        """Calcula el total desde la lista y actualiza la etiqueta"""
         self.total = sum(item[3] for item in self.items_ticket)
         self.total_label.configure(text=f"Total: ${self.total:.2f}")
 
+    def actualizar_tabla_ticket(self):
+        for row in self.ticket.get_children():
+            self.ticket.delete(row)
+        for id_prod, nombre, cantidad, subtotal in self.items_ticket:
+            self.ticket.insert("", "end", values=(nombre, cantidad, f"${subtotal:.2f}"))
+        self.actualizar_total()
+
     def agregar_ticket(self):
-        """Agrega el producto seleccionado al ticket"""
         seleccionado = self.tabla_productos.selection()
         if not seleccionado:
             messagebox.showwarning("Atención", "Selecciona un producto de la lista.")
             return
 
-        cantidad_str = self.cantidad_entry.get()
-        if not cantidad_str.isdigit() or int(cantidad_str) <= 0:
-            messagebox.showwarning("Cantidad inválida", "Ingresa una cantidad válida.")
-            return
-        
         datos = self.tabla_productos.item(seleccionado)["values"]
-        
         try:
             id_producto = int(datos[0])
             nombre = str(datos[1])
             precio = float(datos[2])
             stock_actual = int(datos[3])
-            cantidad = int(cantidad_str)
+            
+            cantidad_str = self.cantidad_entry.get()
+            if not cantidad_str.isdigit() or int(cantidad_str) <= 0:
+                messagebox.showwarning("Cantidad inválida", "Ingresa una cantidad válida.")
+                return
+            cantidad_a_agregar = int(cantidad_str)
         except Exception as e:
             messagebox.showerror("Error", f"No se pudieron leer los datos del producto: {e}")
             return
+
+        item_encontrado = False
+        for i, item in enumerate(self.items_ticket):
+            if item[0] == id_producto: 
+                nueva_cantidad_total = item[2] + cantidad_a_agregar
+                
+                if nueva_cantidad_total > stock_actual:
+                    msg = f"No hay suficiente stock.\n\nStock disponible: {stock_actual}\nYa tienes: {item[2]} en el ticket"
+                    messagebox.showwarning("Sin stock", msg)
+                    return
+
+                nuevo_subtotal = item[3] + (precio * cantidad_a_agregar)
+                self.items_ticket[i] = (id_producto, nombre, nueva_cantidad_total, nuevo_subtotal)
+                item_encontrado = True
+                break
         
-        if cantidad > stock_actual:
-            messagebox.showwarning("Sin stock", f"No hay suficiente stock. Disponible: {stock_actual}")
-            return
-
-        subtotal = precio * cantidad
-
-        # AÑADIMOS DATOS AL TICKET
-        # [(id_producto, nombre, cantidad, subtotal)]
-        self.items_ticket.append((id_producto, nombre, cantidad, subtotal))
-
-        # Mostramos en la tabla
-        self.ticket.insert("", "end", values=(nombre, cantidad, f"${subtotal:.2f}"))
-
-        self.actualizar_total()
+        if not item_encontrado:
+            if cantidad_a_agregar > stock_actual:
+                messagebox.showwarning("Sin stock", f"No hay suficiente stock. Disponible: {stock_actual}")
+                return
+            subtotal = precio * cantidad_a_agregar
+            self.items_ticket.append((id_producto, nombre, cantidad_a_agregar, subtotal))
+        
+        self.actualizar_tabla_ticket() 
         self.cantidad_entry.delete(0, "end")
         self.cantidad_entry.insert(0, "1")
 
     def eliminar_ticket(self):
-        """Elimina un producto del ticket y de la lista interna"""
         seleccionado = self.ticket.selection()
         if not seleccionado:
             messagebox.showwarning("Atención", "Selecciona un producto del ticket para eliminar.")
             return
-
-        # Obtenemos el índice del ítem seleccionado en la tabla visual
         try:
             indice_seleccionado = self.ticket.index(seleccionado)
-            
-            # Eliminamos el ítem de nuestra lista de datos (self.items_ticket)
             self.items_ticket.pop(indice_seleccionado)
-            
-            # Finalmente, borramos de la tabla visual
-            self.ticket.delete(seleccionado)
-            
-            # Recalculamos el total
-            self.actualizar_total()
-
+            self.actualizar_tabla_ticket()
         except Exception as e:
-            messagebox.showerror("Error", f"Hubo un error al intentar eliminar el producto: {e}")
+            messagebox.showerror("Error", f"Error al eliminar: {e}")
 
-
+    
     def finalizar_venta(self):
-        """Guarda la venta y actualiza el inventario"""
-        if not self.items_ticket:
-            messagebox.showwarning("Vacío", "No hay productos en el ticket.")
-            return
+        """
+        Función "tonta" de la vista.
+        Solo pasa los datos al controlador y espera una respuesta.
+        """
+        # 1. Llama al controlador para que haga el trabajo pesado
+        success, id_venta, productos_para_ticket = self.controller.finalizar_venta(
+            self.items_ticket, 
+            self.total, 
+            self.metodo_pago.get(), 
+            self.id_usuario
+        )
 
-        try:
-            # Insertar venta
-            self.cursor.execute(
-                "INSERT INTO ventas (fecha, total, metodo_pago, id_usuario) VALUES (%s, %s, %s, %s)",
-                (datetime.now(), self.total, self.metodo_pago.get(), self.id_usuario), # Pasamos el ID
-            )
-            id_venta = self.cursor.lastrowid
+        # 2. Si el controlador dice que todo salió bien...
+        if success:
+            # 3. Mostramos el ticket simple
+            TicketSimpleVentana(self, id_venta, productos_para_ticket, self.total, self.metodo_pago.get())
 
-            # Insertar detalle y actualizar stock
-            for id_prod, nombre, cantidad, subtotal in self.items_ticket:
-                self.cursor.execute(
-                    "INSERT INTO detalle_venta (id_venta, id_producto, cantidad, subtotal) VALUES (%s, %s, %s, %s)",
-                    (id_venta, id_prod, cantidad, subtotal),
-                )
-                self.cursor.execute(
-                    "UPDATE productos SET stock = stock - %s WHERE id_producto = %s",
-                    (cantidad, id_prod),
-                )
-
-            self.conexion.commit()
-
-            # ✅ Mostrar ticket final
-            TicketFinalVentana(self, id_venta, self.items_ticket, self.total, self.metodo_pago.get())
-
-            # Reiniciar la venta actual sin cerrar la ventana
+            # 4. Reiniciamos la vista
             self.ticket.delete(*self.ticket.get_children())
             self.items_ticket.clear()
             self.actualizar_total()
-            self.cargar_productos() # Recargamos productos por si el stock llegó a 0
-
-        except Exception as e:
-            self.conexion.rollback()
-            messagebox.showerror("Error", f"No se pudo registrar la venta:\n{e}")
+            self.cargar_productos() # Recargamos productos para ver el nuevo stock

@@ -1,9 +1,10 @@
 # reportes_view.py
 import customtkinter as ctk
 from tkinter import ttk, messagebox
-from db import conectar
-from tkcalendar import DateEntry # La nueva librería
+from tkcalendar import DateEntry
 from datetime import datetime
+# --- IMPORTAMOS EL NUEVO CONTROLADOR ---
+from reporte_controller import ReporteController
 
 class ReportesVentana(ctk.CTkToplevel):
     def __init__(self, parent):
@@ -14,8 +15,8 @@ class ReportesVentana(ctk.CTkToplevel):
         self.transient(parent)
         self.grab_set()
 
-        self.conexion = conectar()
-        self.cursor = self.conexion.cursor(dictionary=True) # dictionary=True es clave
+        # --- CREAMOS LA INSTANCIA DEL CONTROLADOR ---
+        self.controller = ReporteController()
         
         self.cajeros_map = {} # Para mapear Nombre -> ID
 
@@ -60,7 +61,6 @@ class ReportesVentana(ctk.CTkToplevel):
             self.tabla.heading(col, text=col)
             self.tabla.column(col, width=ancho, anchor="center")
 
-        # Scrollbar
         scrollbar = ttk.Scrollbar(self, orient="vertical", command=self.tabla.yview)
         scrollbar.pack(side="right", fill="y")
         self.tabla.configure(yscrollcommand=scrollbar.set)
@@ -69,89 +69,54 @@ class ReportesVentana(ctk.CTkToplevel):
         self.aplicar_filtros() # Carga inicial
 
     def cargar_cajeros(self):
-        try:
-            self.cursor.execute("SELECT id_usuario, nombre FROM usuarios")
-            cajeros = self.cursor.fetchall()
+        """Pide los cajeros al controlador y los carga en el ComboBox."""
+        # 1. Pide los cajeros
+        cajeros = self.controller.get_cajeros()
+        
+        # 2. Los procesa
+        lista_cajeros = ["Todos"]
+        self.cajeros_map = {} # Limpiamos el mapa
+        
+        for cajero in cajeros:
+            self.cajeros_map[cajero['nombre']] = cajero['id_usuario']
+            lista_cajeros.append(cajero['nombre'])
             
-            lista_cajeros = ["Todos"]
-            for cajero in cajeros:
-                self.cajeros_map[cajero['nombre']] = cajero['id_usuario']
-                lista_cajeros.append(cajero['nombre'])
-                
-            self.cajero_combo.configure(values=lista_cajeros)
-        except Exception as e:
-            messagebox.showerror("Error", f"No se pudieron cargar los cajeros:\n{e}", parent=self)
+        self.cajero_combo.configure(values=lista_cajeros)
 
     def aplicar_filtros(self):
+        """Función "tonta" de la vista. Pasa los filtros al controlador."""
         for row in self.tabla.get_children():
             self.tabla.delete(row)
 
-        # Construcción de la consulta SQL dinámica
-        query = """
-            SELECT v.id_venta, v.fecha, u.nombre, v.metodo_pago, v.total 
-            FROM ventas v
-            LEFT JOIN usuarios u ON v.id_usuario = u.id_usuario
-        """
+        # 1. Recolecta datos de la vista
+        fecha_ini = self.fecha_inicio.get()
+        fecha_fin = self.fecha_fin.get()
         
-        condiciones = []
-        parametros = []
-        
-        # 1. Filtro de Fecha
-        # Convertimos la fecha de DateEntry (ej. 07/11/2025) a formato SQL (2025-11-07)
-        fecha_ini_obj = datetime.strptime(self.fecha_inicio.get(), '%d/%m/%Y')
-        fecha_fin_obj = datetime.strptime(self.fecha_fin.get(), '%d/%m/%Y')
-        
-        # Ajustamos para que incluya todo el día
-        fecha_ini_sql = fecha_ini_obj.strftime('%Y-%m-%d 00:00:00')
-        fecha_fin_sql = fecha_fin_obj.strftime('%Y-%m-%d 23:59:59')
-
-        condiciones.append("v.fecha BETWEEN %s AND %s")
-        parametros.extend([fecha_ini_sql, fecha_fin_sql])
-        
-        # 2. Filtro de Cajero
         cajero_seleccionado = self.cajero_combo.get()
+        id_cajero = None
         if cajero_seleccionado != "Todos":
             id_cajero = self.cajeros_map.get(cajero_seleccionado)
-            if id_cajero:
-                condiciones.append("v.id_usuario = %s")
-                parametros.append(id_cajero)
 
-        # Unimos las condiciones
-        if condiciones:
-            query += " WHERE " + " AND ".join(condiciones)
+        # 2. Pide al controlador que haga el trabajo
+        ventas, total_recaudado, num_ventas = self.controller.get_reporte_filtrado(
+            fecha_ini, fecha_fin, id_cajero
+        )
 
-        query += " ORDER BY v.fecha DESC"
+        # 3. Muestra los resultados que el controlador le devolvió
+        for venta in ventas:
+            self.tabla.insert("", "end", values=(
+                venta['id_venta'],
+                venta['fecha'].strftime('%Y-%m-%d %H:%M:%S'),
+                venta['nombre'] if venta['nombre'] else "N/A",
+                venta['metodo_pago'],
+                f"${venta['total']:.2f}"
+            ))
         
-        # Ejecutamos
-        try:
-            self.cursor.execute(query, tuple(parametros))
-            ventas = self.cursor.fetchall()
-            
-            total_recaudado = 0
-            num_ventas = 0
-            
-            for venta in ventas:
-                self.tabla.insert("", "end", values=(
-                    venta['id_venta'],
-                    venta['fecha'].strftime('%Y-%m-%d %H:%M:%S'), # Formateamos fecha
-                    venta['nombre'] if venta['nombre'] else "N/A",
-                    venta['metodo_pago'],
-                    f"${venta['total']:.2f}"
-                ))
-                total_recaudado += venta['total']
-                num_ventas += 1
-            
-            # Actualizar sumario
-            self.total_ventas_label.configure(text=f"Total Recaudado: ${total_recaudado:.2f}")
-            self.num_ventas_label.configure(text=f"Nº de Ventas: {num_ventas}")
-
-        except Exception as e:
-            messagebox.showerror("Error de Consulta", f"No se pudo filtrar el reporte:\n{e}", parent=self)
+        self.total_ventas_label.configure(text=f"Total Recaudado: ${total_recaudado:.2f}")
+        self.num_ventas_label.configure(text=f"Nº de Ventas: {num_ventas}")
 
     def limpiar_filtros(self):
         self.cajero_combo.set("Todos")
-        # Reseteamos las fechas a hoy
         self.fecha_inicio.set_date(datetime.now())
         self.fecha_fin.set_date(datetime.now())
-        
         self.aplicar_filtros()
