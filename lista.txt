@@ -1,0 +1,5 @@
+lalito tiene un pitote
+
+
+git config --global user.email "pedro_3141240146@utd.edu.mx"
+  git config --global user.name "pedro"
