@@ -1,66 +1,70 @@
 # login_view.py
 import customtkinter as ctk
 from tkinter import messagebox
-# Ya no importamos 'conectar' desde aquí
+import os
+from PIL import Image 
 from ventas_view import VentasVentana
 from menu_admin_view import MenuAdmin
-# --- IMPORTAMOS EL NUEVO CONTROLADOR ---
 from login_controller import LoginController
 
 class LoginVentana(ctk.CTk):
     def __init__(self):
         super().__init__()
         self.title("Login - Fogón EMD")
-        self.geometry("400x400")
+        self.geometry("450x600")
         self.resizable(False, False)
+        
+        # --- SALSEO: Fondo Cálido (Crema) ---
+        self.configure(fg_color="#FFF6F3") 
 
-        # --- CREAMOS LA INSTANCIA DEL CONTROLADOR ---
         self.controller = LoginController()
-
-        # Si el controlador no pudo conectarse a la BD, cerramos la app
         if not self.controller.is_db_connected():
             self.destroy()
             return
             
-        # --- DIBUJO DE LA VISTA (sin cambios) ---
-        ctk.CTkLabel(self, text="🔥 Fogón EMD", font=("Arial", 26, "bold")).pack(pady=20)
-        ctk.CTkLabel(self, text="Inicia sesión", font=("Arial", 18)).pack(pady=5)
+        # --- TARJETA CENTRAL (Blanca) ---
+        frame_card = ctk.CTkFrame(self, fg_color="white", corner_radius=20, border_color="#FFCCBC", border_width=1)
+        frame_card.pack(pady=40, padx=30, fill="both", expand=True)
 
-        ctk.CTkLabel(self, text="Usuario:").pack(pady=5)
-        self.usuario_entry = ctk.CTkEntry(self, placeholder_text="Ej. admin")
-        self.usuario_entry.pack(pady=5)
-        self.usuario_entry.insert(0, "admin") # Pre-llenado para pruebas
+        # Logo
+        try:
+            ruta_logo = os.path.join(os.path.dirname(__file__), "assets", "logo.png")
+            imagen_pil = Image.open(ruta_logo)
+            self.logo_img = ctk.CTkImage(light_image=imagen_pil, dark_image=imagen_pil, size=(150, 150))
+            ctk.CTkLabel(frame_card, image=self.logo_img, text="").pack(pady=(30, 10))
+        except:
+            ctk.CTkLabel(frame_card, text="🔥", font=("Arial", 60)).pack(pady=20)
 
-        ctk.CTkLabel(self, text="Contraseña:").pack(pady=5)
-        self.pass_entry = ctk.CTkEntry(self, placeholder_text="••••••", show="*")
-        self.pass_entry.pack(pady=5)
-        self.pass_entry.insert(0, "admin123") # Pre-llenado para pruebas
+        # Títulos
+        ctk.CTkLabel(frame_card, text="Bienvenido", font=("Arial", 24, "bold"), text_color="#D35400").pack(pady=5)
+        ctk.CTkLabel(frame_card, text="Inicia sesión para continuar", font=("Arial", 12), text_color="gray").pack(pady=(0, 20))
 
-        ctk.CTkButton(self, text="Iniciar Sesión", command=self.validar_login_vista).pack(pady=20)
-        self.bind('<Return>', self.validar_login_vista) # Bind Enter
-        ctk.CTkLabel(self, text="Fogón EMD © 2025", font=("Arial", 10)).pack(side="bottom", pady=10)
+        # Campos
+        self.usuario_entry = ctk.CTkEntry(frame_card, placeholder_text="Usuario", height=45, 
+                                          fg_color="#FAFAFA", border_color="#E67E22", text_color="black")
+        self.usuario_entry.pack(fill="x", padx=30, pady=(0, 15))
+        self.usuario_entry.insert(0, "admin") 
 
-    # ==========================================================
-    # === FUNCIÓN "TONTA" DE LA VISTA ===
-    # ==========================================================
+        self.pass_entry = ctk.CTkEntry(frame_card, placeholder_text="Contraseña", show="*", height=45,
+                                       fg_color="#FAFAFA", border_color="#E67E22", text_color="black")
+        self.pass_entry.pack(fill="x", padx=30, pady=(0, 20))
+        self.pass_entry.insert(0, "admin123") 
+
+        # Botón Salseado
+        ctk.CTkButton(frame_card, text="INGRESAR", command=self.validar_login_vista, height=45, 
+                      font=("Arial", 14, "bold"), fg_color="#D35400", hover_color="#A04000", corner_radius=25).pack(padx=30, pady=10, fill="x")
+        
+        self.bind('<Return>', self.validar_login_vista) 
+        ctk.CTkLabel(self, text="Fogón EMD System © 2025", font=("Arial", 10), text_color="gray").pack(side="bottom", pady=10)
+
     def validar_login_vista(self, event=None):
-        """
-        Función "tonta" de la vista.
-        1. Recoge datos.
-        2. Los pasa al controlador.
-        3. Actúa según la respuesta.
-        """
-        # 1. Recoge datos de la vista
         usuario = self.usuario_entry.get().strip()
         password = self.pass_entry.get().strip()
-        
-        # 2. Pasa los datos al controlador y espera una respuesta
         autenticado, rol, id_usuario = self.controller.validar_login(usuario, password)
 
-        # 3. Actúa según la respuesta del controlador
         if autenticado:
             if rol == "admin":
-                self.withdraw()  # Oculta la ventana de login
+                self.withdraw() 
                 MenuAdmin(self, id_usuario)
             elif rol == "cajero":
                 self.withdraw()

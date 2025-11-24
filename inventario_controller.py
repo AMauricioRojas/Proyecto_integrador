@@ -12,7 +12,6 @@ class InventarioController:
             messagebox.showerror("Error de Conexión", f"No se pudo conectar a la base de datos:\n{e}")
 
     def get_all_productos(self):
-        """Obtiene todos los productos de la base de datos."""
         try:
             self.cursor.execute("SELECT id_producto, nombre, categoria, precio, stock FROM productos")
             return self.cursor.fetchall()
@@ -21,7 +20,6 @@ class InventarioController:
             return []
 
     def delete_producto(self, id_prod, nombre_prod):
-        """Elimina un producto de la base de datos."""
         if messagebox.askyesno("Eliminar", f"¿Seguro que deseas eliminar '{nombre_prod}'?"):
             try:
                 self.cursor.execute("DELETE FROM productos WHERE id_producto = %s", (id_prod,))
@@ -34,10 +32,19 @@ class InventarioController:
         return False
 
     def add_producto(self, nombre, categoria, precio, stock):
-        """Agrega un nuevo producto."""
         if not nombre or not precio or not stock:
             messagebox.showwarning("Campos vacíos", "Por favor completa todos los campos.")
             return False
+        
+        # --- VALIDACIÓN DE NÚMEROS ---
+        try:
+            float(precio)
+            int(stock)
+        except ValueError:
+            messagebox.showerror("Error de formato", "El Precio y el Stock deben ser números válidos.")
+            return False
+        # -----------------------------
+
         try:
             self.cursor.execute(
                 "INSERT INTO productos (nombre, categoria, precio, stock) VALUES (%s, %s, %s, %s)",
@@ -51,10 +58,19 @@ class InventarioController:
             return False
 
     def update_producto(self, id_producto, nombre, categoria, precio, stock):
-        """Actualiza un producto existente."""
         if not nombre or not precio or not stock:
             messagebox.showwarning("Campos vacíos", "Por favor completa todos los campos.")
             return False
+
+        # --- VALIDACIÓN DE NÚMEROS ---
+        try:
+            float(precio)
+            int(stock)
+        except ValueError:
+            messagebox.showerror("Error de formato", "El Precio y el Stock deben ser números válidos.")
+            return False
+        # -----------------------------
+
         try:
             self.cursor.execute(
                 "UPDATE productos SET nombre=%s, categoria=%s, precio=%s, stock=%s WHERE id_producto=%s",
