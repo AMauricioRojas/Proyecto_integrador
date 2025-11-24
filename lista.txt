@@ -3,3 +3,4 @@ lalito tiene un pitote
 
 git config --global user.email "pedro_3141240146@utd.edu.mx"
   git config --global user.name "pedro"
+Nos abrirá el historial de pull request que hay pendientes de confirmar, y desde aqui podemos aceptar el cambio de algún integrante del equipo. Git tiene una herramienta que detecta si hay alguna advertencia en el cambio o si el cambio no afecta potencialmente el repositorio. Damos click en el botón verde Merge pull request.
