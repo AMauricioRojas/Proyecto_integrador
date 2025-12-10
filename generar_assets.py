@@ -40,7 +40,7 @@ def crear_icono(nombre, color_fondo, simbolo, color_simbolo="white"):
     img.save(f"assets/{nombre}.png")
     print(f"Generado: assets/{nombre}.png")
 
-# Colores de la paleta Fogón (Ladrillo, Naranja, Café)
+# Colores de la paleta Fogón 
 c_ladrillo = "#D35400"
 c_naranja = "#E67E22"
 c_azul = "#2980B9"

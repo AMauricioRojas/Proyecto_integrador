@@ -1,0 +1,11 @@
+customtkinter
+mysql-connector-python
+Pillow
+tkcalendar
+reportlab
+pywin32
+auto-py-to-exe
+
+
+
+#USA pip install -r requirements.txt
